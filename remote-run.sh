@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${MB_MIGRATOR_REPO:-mightybox-io/mb-migrator}"
+REPO="${MB_MIGRATOR_REPO:-bernadethp/mb-migrator-app}"
 REF="${MB_MIGRATOR_REF:-main}"
 TMP_PARENT="${MB_MIGRATOR_TMPDIR:-${TMPDIR:-/tmp}}"
 WORKDIR="$(mktemp -d "$TMP_PARENT/mb-migrator.XXXXXX")"

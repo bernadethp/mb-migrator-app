@@ -1,6 +1,11 @@
-# MB Migrator
+# MB Migrator App Engine
 
 `mb-migrator` restores WordPress provider exports into a MightyBox-style WordPress document root.
+
+This is the independent command-line engine used by the MightyBox Assisted
+Migration application. It is maintained separately from
+`mightybox-io/mb-migrator`; its remote-run defaults and examples resolve only
+to this repository.
 
 Print the exact tool version with `mb-migrator --version`.
 
@@ -21,7 +26,7 @@ The commands can be run without cloning this repository.
 On the old host, create the package:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
   export-site \
   --source-root=/path/to/wordpress \
   --output="$HOME/wordpress-package.tar.gz"
@@ -53,7 +58,7 @@ scp wordpress-package.tar.gz* user@new-host:~/
 On the new host, verify and import the package:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
   import-site "$HOME/wordpress-package.tar.gz" \
   --target-root=/srv/htdocs \
   --new-url=https://new.example.com
@@ -64,7 +69,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator
 For an unattended import:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
   import-site "$HOME/wordpress-package.tar.gz" \
   --target-root=/srv/htdocs \
   --new-url=https://new.example.com \
@@ -89,7 +94,7 @@ Use the outbound push workflow when the old host cannot accept inbound SSH but c
 For the normal guided migration, run this single command on the old host:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- push
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- push
 ```
 
 The wizard:
@@ -103,7 +108,7 @@ The wizard:
 You may supply known values up front while keeping the guided pause:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
   push \
   --destination=USER@NEW-HOST \
   --port=22 \
@@ -117,7 +122,7 @@ GridPane's standard parent-level `wp-config.php` without copying that file into
 the migration package:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
   push \
   --source-root=/var/www/example.com/htdocs \
   --destination=USER@NEW-HOST \
@@ -156,7 +161,7 @@ After a successful URL replacement, the importer flushes the WordPress object ca
 If either host lacks `rsync`, automatic mode falls back to building and transferring the portable tar package. Use `--transport=rsync` to require direct transfer or `--transport=package` to force the older package workflow:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
   push-site \
   --transport=rsync \
   --source-db-method=auto \
@@ -193,14 +198,14 @@ The repository does not need to be cloned onto the new host. Each command downlo
 Pair the new host with the legacy host:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
   pair user@legacy-host
 ```
 
 Preflight both hosts:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
   doctor \
   --source=user@legacy-host \
   --source-root=/var/www/webroot/ROOT \
@@ -210,7 +215,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator
 Run the migration:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
   pull user@legacy-host \
   --source-root=/var/www/webroot/ROOT \
   --target-root=/srv/htdocs \
@@ -220,7 +225,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator
 Run the same migration again as a catch-up before cutover:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
   pull user@legacy-host \
   --source-root=/var/www/webroot/ROOT \
   --target-root=/srv/htdocs \
@@ -302,7 +307,7 @@ Version one supports WordPress single-site installations. Multisite is rejected 
 Run without installing the repo first:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- restore /path/to/export.tar.gz --target-root=/srv/htdocs --dry-run
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- restore /path/to/export.tar.gz --target-root=/srv/htdocs --dry-run
 ```
 
 The remote runner downloads the repo into a temporary directory, runs `bin/mb-migrator`, then removes the temporary directory when it exits.
@@ -310,7 +315,7 @@ The remote runner downloads the repo into a temporary directory, runs `bin/mb-mi
 Use a branch, tag, or commit by setting `MB_MIGRATOR_REF`:
 
 ```bash
-MB_MIGRATOR_REF=main bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- restore /path/to/export.tar.gz --target-root=/srv/htdocs --dry-run
+MB_MIGRATOR_REF=main bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- restore /path/to/export.tar.gz --target-root=/srv/htdocs --dry-run
 ```
 
 ## Local Usage
@@ -714,7 +719,7 @@ Destination WP-CLI commands are launched from inside the target root rather than
 Before a restore, run:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- doctor \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- doctor \
   --target-root=/srv/htdocs \
   --archive=/path/to/export.tar.gz
 ```
@@ -735,7 +740,7 @@ The doctor command checks:
 The one-line runner downloads itself into a temporary directory. If `/tmp` is not usable on a gateway host, set `MB_MIGRATOR_TMPDIR` to a writable location:
 
 ```bash
-MB_MIGRATOR_TMPDIR=/srv/htdocs bash -c "$(curl -fsSL https://raw.githubusercontent.com/mightybox-io/mb-migrator/main/remote-run.sh)" -- doctor \
+MB_MIGRATOR_TMPDIR=/srv/htdocs bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- doctor \
   --target-root=/srv/htdocs \
   --archive=/path/to/export.tar.gz
 ```

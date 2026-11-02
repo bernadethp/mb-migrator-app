@@ -582,7 +582,7 @@ push_site() (
   remote_stage="$remote_dir/staged-site"
   remote_runner="$remote_dir/remote-run.sh"
 
-  repo="${MB_MIGRATOR_REPO:-mightybox-io/mb-migrator}"
+  repo="${MB_MIGRATOR_REPO:-bernadethp/mb-migrator-app}"
   ref="${MB_MIGRATOR_REF:-main}"
   [[ "$repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || die "Invalid repository name: $repo"
   [[ "$ref" =~ ^[A-Za-z0-9._/-]+$ ]] || die "Invalid repository ref: $ref"
