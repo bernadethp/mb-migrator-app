@@ -53,7 +53,8 @@ export DB_NAME="source_db"
 export DB_USER="source_user"
 export DB_PASSWORD="package-secret"
 export DB_HOST="localhost"
-export REAL_TAR="$(command -v tar)"
+REAL_TAR="$(command -v tar)"
+export REAL_TAR
 printf '%s\n' '#!/usr/bin/env bash' \
   'set -euo pipefail' \
   'LC_ALL=C "$REAL_TAR" "$@"' \

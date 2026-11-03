@@ -2,6 +2,7 @@
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 T="$(mktemp -d "${TMPDIR:-/tmp}/mb-relay-test.XXXXXX")"
+# shellcheck disable=SC2154 # status is assigned inside this EXIT trap.
 trap 'status=$?; if [[ "$status" -ne 0 ]]; then cat "$T/"*.log >&2; fi; rm -rf "$T"' EXIT
 export RELAY_TEST_ROOT="$T"
 mkdir -p "$T/source/wp-content/uploads" "$T/target/wp-content" "$T/bin" "$T/home"

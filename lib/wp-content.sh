@@ -36,7 +36,7 @@ materialize_internal_web_symlinks() {
   link_list="$dest_wp_content/.mb-migrator-symlinks.$$"
   find "$source_wp_content" -type l -print > "$link_list"
 
-  for pass in 1 2 3 4 5; do
+  for _pass in 1 2 3 4 5; do
     progress=0
     while IFS= read -r source_link; do
       link_target="$(readlink "$source_link")"

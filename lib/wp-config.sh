@@ -64,7 +64,8 @@ wp_config_migrate_named() {
 
   confirm "Replace target $label with exported $label?" || die "$label migration cancelled"
 
-  local backup="$target_config.backup-$(date +%Y%m%d%H%M%S)"
+  local backup
+  backup="$target_config.backup-$(date +%Y%m%d%H%M%S)"
   if [[ -f "$target_config" ]]; then
     cp -p "$target_config" "$backup"
     log "Backed up target $label to $backup"
