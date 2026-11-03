@@ -764,9 +764,17 @@ push_site() (
   printf -v login_command 'bash -lc %q' "$url_command"
   if verify_output="$(ssh "${ssh_args[@]}" "$destination" "$login_command" 2>/dev/null)"; then
     detected_url="$(printf '%s\n' "$verify_output" | tr -d '\r' | awk -F= '/^__MB_HOME__=/{sub(/^[^=]*=/, ""); value=$0} END{print value}')"
-    log "Destination WordPress check passed (home: ${detected_url:-unknown})"
+    if [[ "$detected_url" =~ ^https?://[^[:space:]]+$ ]]; then
+      log "Destination WordPress check passed (home: $detected_url)"
+    else
+      warn "Destination WordPress verification returned an invalid home URL"
+      warn "Transferred migration data was retained for diagnosis at: $destination:$remote_dir"
+      exit 1
+    fi
   else
-    warn "Migration completed, but the destination WP-CLI health check failed"
+    warn "Destination WordPress verification failed; migration was not marked complete"
+    warn "Transferred migration data was retained for diagnosis at: $destination:$remote_dir"
+    exit 1
   fi
   if [[ "${MB_MIGRATOR_SKIP_HTTP_VERIFY:-0}" != "1" ]] && command -v curl >/dev/null 2>&1; then
     http_code="$(curl -L -sS -o /dev/null -w '%{http_code}' --max-time 30 "$new_url" 2>/dev/null || true)"

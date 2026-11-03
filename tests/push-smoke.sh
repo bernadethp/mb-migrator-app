@@ -27,7 +27,7 @@ printf '%s\n' '#!/usr/bin/env bash' \
   '  *"command -v rsync"*) printf '\''/usr/bin/rsync\n'\'' ;;' \
   '  *"__MB_TARGET_ROOT__"*) printf '\''__MB_TARGET_ROOT__=/srv/htdocs\n'\'' ;;' \
   '  *"option"*get*siteurl*) printf '\''%s\n'\'' "$command_text" > "$PUSH_URL_MARKER"; printf '\''https://destination-push.example.test\n'\'' ;;' \
-  '  *"option"*get*home*) exit 1 ;;' \
+  '  *"option"*get*home*) [[ "${PUSH_VERIFY_FAIL:-0}" != "1" ]] || exit 1; printf '\''__MB_HOME__=https://destination-push.example.test\n'\'' ;;' \
   '  *"rsync-"*"__MB_REMOTE_DIR__"*) if [[ "$command_text" =~ rsync-([a-f0-9]{20}) ]]; then pairing="${BASH_REMATCH[1]}"; else exit 1; fi; reused=0; [[ ! -e "$PUSH_REMOTE_CACHE_MARKER" ]] || reused=1; : > "$PUSH_REMOTE_CACHE_MARKER"; printf '\''__MB_REMOTE_DIR__=/home/destination/.local/state/mb-migrator/incoming/rsync-%s\n__MB_CACHE_REUSED__=%s\n'\'' "$pairing" "$reused" ;;' \
   '  *"__MB_REMOTE_DIR__"*) printf '\''__MB_REMOTE_DIR__=/home/destination/.local/state/mb-migrator/incoming/push.test123\n'\'' ;;' \
   '  *"mkdir -p"*"staged-site"*) exit 0 ;;' \
@@ -134,6 +134,28 @@ grep -q 'cd' "$PUSH_URL_MARKER"
 grep -q 'siteurl' "$PUSH_URL_MARKER"
 grep -q -- '--target-root=/srv/htdocs' "$PUSH_IMPORT_MARKER"
 grep -q -- '--new-url=https://destination-push.example.test' "$PUSH_IMPORT_MARKER"
+
+rm -f "$PUSH_CLEANUP_MARKER"
+if PUSH_VERIFY_FAIL=1 PATH="$FAKE_BIN:$PATH" "$ROOT_DIR/bin/mb-migrator" push-site \
+  "--pairing=$pairing_id" \
+  "--state-dir=$STATE_DIR" \
+  "--source-root=$SOURCE" \
+  --source-db-method=native \
+  --target-db-method=native \
+  --db-import=yes \
+  --mu-plugins=skip \
+  --root-extras=skip \
+  --cleanup=no \
+  --yes >"$TEST_ROOT/verification-failure.log" 2>&1; then
+  printf 'push migration unexpectedly succeeded after destination verification failed\n' >&2
+  exit 1
+fi
+grep -q 'Destination WordPress verification failed; migration was not marked complete' "$TEST_ROOT/verification-failure.log"
+if grep -q 'Push migration completed' "$TEST_ROOT/verification-failure.log"; then
+  printf 'failed destination verification was reported as complete\n' >&2
+  exit 1
+fi
+test ! -e "$PUSH_CLEANUP_MARKER"
 
 mv "$PUSH_IMPORT_MARKER" "$TEST_ROOT/rsync-import-command"
 : > "$PUSH_SCP_MARKER"
