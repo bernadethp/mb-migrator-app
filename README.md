@@ -291,6 +291,13 @@ A catch-up always takes a fresh full database dump. When `rsync` exists on both 
 
 Detected or supplied old/new URLs are saved in the private migration state and automatically reused during catch-up, so importing the fresh database does not undo the destination URL rewrite.
 
+An outbound push is marked complete only after the destination can bootstrap
+WordPress with WP-CLI and returns a valid HTTP(S) home URL. If that required
+verification fails, the command exits non-zero and retains the transferred
+private migration data for diagnosis and retry. The optional public HTTP check
+remains advisory because a destination may intentionally be private before
+cutover.
+
 Use `--restart` to delete only the matching migration state and begin again. In an interactive session the exact state path is shown before restart. `--yes` by itself never selects this destructive action.
 
 ### Database Fallback
