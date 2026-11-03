@@ -9,6 +9,16 @@ to this repository.
 
 Print the exact tool version with `mb-migrator --version`.
 
+Before opening a pull request, run the same syntax, ShellCheck and seven-suite
+smoke gate used by GitHub Actions:
+
+```bash
+./scripts/validate.sh
+```
+
+The command fails explicitly when a required local runtime is unavailable; a
+missing tool is never reported as a passing or skipped check.
+
 It is built for migration work where a single provider export archive contains site files plus split SQL database dumps. The first supported provider adapter is GridPane-style SFTP exports. The project is intentionally modular so support for other providers can be added behind provider adapters.
 
 It can also pull a single-site WordPress installation directly from a legacy MightyBox host over SSH. The live workflow is controlled entirely from the new host; the legacy host does not need a copy of this repository.

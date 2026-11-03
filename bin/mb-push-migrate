@@ -290,7 +290,7 @@ guided_push() (
   if [[ "$pairing_verified" == "no" ]]; then
     printf '\n'
     printf '[%s:prompt] Press Enter to continue after the public key is installed: ' "$(log_prefix)" >&2
-    IFS= read -r confirmation ||
+    IFS= read -r _confirmation ||
       die "Input ended before the guided migration was complete"
     if [[ -z "$destination" ]]; then
       prompt_value destination "Destination SSH login (USER@HOST)"
@@ -618,6 +618,7 @@ push_site() (
     rsync_args=(-azr --checksum --safe-links --partial --partial-dir=.mb-migrator-partial --timeout=120 --no-perms --no-owner --no-group --omit-dir-times "--rsync-path=$remote_rsync_path")
     rsync_help="$(rsync --info=help 2>&1 || true)"
     if [[ "$rsync_help" == *progress2* ]]; then
+      # shellcheck disable=SC2054 # Commas delimit rsync --info flags.
       rsync_args+=(--human-readable --info=name0,progress2)
     else
       rsync_args+=(--progress)

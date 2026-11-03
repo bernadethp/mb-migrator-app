@@ -195,7 +195,7 @@ check_database_export() {
 }
 
 is_core_root_file() {
-  case "$1" in index.php|license.txt|readme.html|wp-*.php|xmlrpc.php|wp-config.php) return 0 ;; esac
+  case "$1" in index.php|license.txt|readme.html|wp-*.php|xmlrpc.php) return 0 ;; esac
   return 1
 }
 

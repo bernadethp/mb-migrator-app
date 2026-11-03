@@ -88,7 +88,7 @@ gridpane_is_core_root_file() {
   local root_name="$1"
 
   case "$root_name" in
-    index.php|license.txt|readme.html|wp-*.php|xmlrpc.php|wp-config.php)
+    index.php|license.txt|readme.html|wp-*.php|xmlrpc.php)
       return 0
       ;;
   esac

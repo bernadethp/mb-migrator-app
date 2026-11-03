@@ -1,0 +1,3 @@
+# Provider and library modules intentionally publish variables to the caller
+# that sources them. ShellCheck cannot see those cross-file reads.
+disable=SC2034
