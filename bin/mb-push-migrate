@@ -583,9 +583,15 @@ push_site() (
   remote_runner="$remote_dir/remote-run.sh"
 
   repo="${MB_MIGRATOR_REPO:-bernadethp/mb-migrator-app}"
-  ref="${MB_MIGRATOR_REF:-main}"
+  ref="${MB_MIGRATOR_REF:-}"
+  if [[ -z "$ref" && -f "$ROOT_DIR/RELEASE-MANIFEST" ]]; then
+    ref="$(awk -F= '$1 == "revision" { print $2; exit }' "$ROOT_DIR/RELEASE-MANIFEST")"
+  fi
+  if [[ -z "$ref" && -d "$ROOT_DIR/.git" ]]; then
+    ref="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)"
+  fi
   [[ "$repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || die "Invalid repository name: $repo"
-  [[ "$ref" =~ ^[A-Za-z0-9._/-]+$ ]] || die "Invalid repository ref: $ref"
+  [[ "$ref" =~ ^[a-f0-9]{40}$ ]] || die "Outbound push requires MB_MIGRATOR_REF set to the exact engine commit SHA"
 
   need_cmd scp
   if [[ "$selected_transport" == "rsync" ]]; then

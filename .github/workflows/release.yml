@@ -1,0 +1,51 @@
+name: Build attested release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    if: github.repository == 'bernadethp/mb-migrator-app'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the tagged revision
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require the tag to match VERSION
+        run: test "${GITHUB_REF_NAME}" = "v$(tr -d '[:space:]' < VERSION)"
+
+      - name: Install validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+
+      - name: Run the complete validation gate
+        run: ./scripts/validate.sh
+
+      - name: Build and verify deterministic release assets
+        run: |
+          ./scripts/build-release.sh dist
+          ./scripts/verify-release.sh \
+            "dist/mb-migrator-$(<VERSION).tar.gz" \
+            "dist/mb-migrator-$(<VERSION).tar.gz.sha256" \
+            "$(<VERSION)" "${GITHUB_SHA}"
+
+      - name: Attest release archive provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/mb-migrator-*.tar.gz
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --verify-tag --generate-notes
