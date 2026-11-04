@@ -83,6 +83,8 @@ export PUSH_REMOTE_CACHE_MARKER="$TEST_ROOT/remote-cache"
 export PUSH_RSYNC_RETRY_MARKER="$TEST_ROOT/rsync-retried"
 export MB_MIGRATOR_SSH_DIR="$TEST_ROOT/ssh"
 export MB_MIGRATOR_SKIP_HTTP_VERIFY=1
+MB_MIGRATOR_REF="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+export MB_MIGRATOR_REF
 
 prepare_output="$(PATH="$FAKE_BIN:$PATH" "$ROOT_DIR/bin/mb-migrator" push-pair prepare "--state-dir=$STATE_DIR")"
 pairing_id="$(printf '%s\n' "$prepare_output" | awk -F': ' '/Pairing ID:/{print $2; exit}')"

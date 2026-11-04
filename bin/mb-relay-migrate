@@ -14,6 +14,7 @@ Intermediary migration (run on a machine that can SSH to both hosts):
   --source-known-hosts=PATH --destination-known-hosts=PATH
   --source-db-method=auto|wp-cli|native
   --state-dir=PATH           Private local cache, reused on subsequent catch-ups
+  --recover-stale-lock       Recover only a proven dead same-host relay owner
 Restore options, including --db-import, --new-url, --safety and --yes, are
 forwarded to the destination. Destination cleanup is disabled to retain the
 incremental cache. SSH credentials stay on the intermediary. No host connects
@@ -25,6 +26,7 @@ source_host="$1"; shift
 destination=""; source_root=""; target_root=""; source_port=22; destination_port=22
 source_identity=""; destination_identity=""; source_known_hosts=""; destination_known_hosts=""; method=auto
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/mb-migrator/relay"
+recover_stale_lock=no
 restore_args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,6 +41,7 @@ while [[ $# -gt 0 ]]; do
     --destination-known-hosts=*) destination_known_hosts="${1#*=}" ;;
     --source-db-method=*) method="${1#*=}" ;;
     --state-dir=*) state_dir="${1#*=}" ;;
+    --recover-stale-lock) recover_stale_lock=yes ;;
     --rollback-dir=*) die "Relay owns its private rollback location" ;;
     --cleanup=*|--delete-stage-after-success|--delete-archive-after-success|--delete-sql-after-import)
       die "Relay retains its cache; remove private state separately after cutover" ;;
@@ -73,11 +76,61 @@ mkdir -p "$state_dir"; state_dir="$(cd "$state_dir" && pwd -P)"
 work="$state_dir/$id"
 mkdir -p "$work/package/htdocs/wp-content" "$work/package/database-package"
 chmod 700 "$state_dir" "$work" "$work/package" "$work/package/htdocs" "$work/package/database-package"
-# Prevent two runs from changing the same cache or importing concurrently.
-mkdir "$work/lock" 2>/dev/null || die "Relay cache is locked: $work/lock; check for a running migration"
-trap 'rmdir "$work/lock"' EXIT
+lock_dir="$work/lock"
+lock_owner="$lock_dir/owner"
+lock_host="$(uname -n)"
+lock_retain=no
+[[ "$lock_host" =~ ^[A-Za-z0-9._-]+$ ]] || die "Local hostname is unsafe for relay lock ownership"
+if ! mkdir "$lock_dir" 2>/dev/null; then
+  [[ "$recover_stale_lock" == yes ]] || die "Relay cache is locked; check for a running migration or use --recover-stale-lock after proving the owner stopped"
+  [[ -f "$lock_owner" && ! -L "$lock_owner" ]] || die "Relay lock ownership is missing or unsafe; inspect it manually"
+  owner_host="$(awk -F= '$1 == "host" { print $2; exit }' "$lock_owner")"
+  owner_pid="$(awk -F= '$1 == "pid" { print $2; exit }' "$lock_owner")"
+  owner_phase="$(awk -F= '$1 == "phase" { print $2; exit }' "$lock_owner")"
+  [[ "$owner_host" == "$lock_host" && "$owner_pid" =~ ^[0-9]+$ && "$owner_pid" -gt 1 ]] || \
+    die "Relay lock ownership is foreign or malformed; inspect it manually"
+  case "$owner_phase" in
+    setup|preflight|files|database|transfer) ;;
+    restore|complete) die "Relay lock stopped during or after destination restore; reconcile the destination and rollback point manually" ;;
+    *) die "Relay lock phase is missing or unknown; inspect it manually" ;;
+  esac
+  if kill -0 "$owner_pid" 2>/dev/null; then
+    die "Relay cache is owned by active PID $owner_pid on this host"
+  fi
+  rm -f "$lock_owner"
+  rmdir "$lock_dir" 2>/dev/null || die "Relay lock changed during recovery; retry after inspecting the cache"
+  mkdir "$lock_dir" 2>/dev/null || die "Another relay acquired the cache during recovery"
+  warn "Recovered relay lock from dead PID $owner_pid on this host"
+fi
+chmod 700 "$lock_dir"
+write_lock_owner() {
+  local phase="$1" temporary="$lock_owner.tmp.$$"
+  printf 'host=%s\npid=%s\nphase=%s\n' "$lock_host" "$$" "$phase" > "$temporary"
+  chmod 600 "$temporary"
+  mv "$temporary" "$lock_owner"
+}
+write_lock_owner setup
+cleanup_lock() {
+  if [[ "$lock_retain" == yes ]]; then
+    warn "Relay lock retained because destination restore or rollback readiness is ambiguous: $lock_dir"
+    return 0
+  fi
+  [[ -f "$lock_owner" && ! -L "$lock_owner" ]] || return 0
+  grep -Fxq "host=$lock_host" "$lock_owner" || return 0
+  grep -Fxq "pid=$$" "$lock_owner" || return 0
+  rm -f "$lock_owner"
+  rmdir "$lock_dir" 2>/dev/null || true
+}
+trap cleanup_lock EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+relay_phase() {
+  set_log_phase "$1"
+  write_lock_owner "$1"
+}
 log "Private relay cache: $work"
-set_log_phase preflight
+relay_phase preflight
 ssh "${source_ssh[@]}" "$source_host" bash -s -- preflight "$source_root" "$method" < "$ROOT_DIR/lib/remote-source.sh"
 remote="$(ssh "${dest_ssh[@]}" "$destination" "umask 077; mkdir -p \"\$HOME/.local/state/mb-migrator/relay/$id\" && cd \"\$HOME/.local/state/mb-migrator/relay/$id\" && pwd -P")"
 [[ "$remote" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "Destination returned an unsupported staging path"
@@ -87,20 +140,20 @@ rollback_token="$(date -u +%Y%m%dT%H%M%SZ)-$$-${RANDOM:-0}"
 rollback_dir="$remote/rollback-$rollback_token"
 printf -v source_transport 'ssh'; for arg in "${source_ssh[@]}"; do printf -v source_transport '%s %q' "$source_transport" "$arg"; done
 printf -v dest_transport 'ssh'; for arg in "${dest_ssh[@]}"; do printf -v dest_transport '%s %q' "$dest_transport" "$arg"; done
-set_log_phase files
+relay_phase files
 rsync -az --checksum --safe-links --partial --no-perms --no-owner --no-group -e "$source_transport" \
   --include='/plugins/***' --include='/themes/***' --include='/uploads/***' --include='/mu-plugins/***' --exclude='*' \
   "$source_host:$source_root/wp-content/" "$work/package/htdocs/wp-content/"
 ssh "${source_ssh[@]}" "$source_host" bash -s -- archive-root "$source_root" "$method" < "$ROOT_DIR/lib/remote-source.sh" > "$work/root.tar.gz"
 tar -xzf "$work/root.tar.gz" -C "$work/package/htdocs"
-set_log_phase database
+relay_phase database
 ssh "${source_ssh[@]}" "$source_host" bash -s -- export-db "$source_root" "$method" < "$ROOT_DIR/lib/remote-source.sh" > "$work/package/database-package/site.sql.tmp"
 [[ -s "$work/package/database-package/site.sql.tmp" ]] || die "Empty database export"
 mv "$work/package/database-package/site.sql.tmp" "$work/package/database-package/site.sql"
 source_url="$(ssh "${source_ssh[@]}" "$source_host" bash -s -- get-url "$source_root" "$method" < "$ROOT_DIR/lib/remote-source.sh")" || die "Source URL lookup failed; retained cache: $work"
 [[ "$source_url" =~ ^https?://[^[:space:]]+$ ]] || die "Source URL unavailable; export a portable package instead"
 printf 'format=mb-wordpress-package-v1\nsource_url=%s\ncreated_utc=%s\n' "$source_url" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$work/package/mb-wordpress-package-manifest"
-set_log_phase transfer
+relay_phase transfer
 rsync -az --checksum --safe-links --partial --no-owner --no-group -e "$dest_transport" "$work/package/" "$destination:$remote/package/"
 # Verify every transferred byte against the collected cache before importing.
 comparison="$(rsync -rlcn --safe-links --out-format='%n' -e "$dest_transport" "$work/package/" "$destination:$remote/package/")"
@@ -113,11 +166,13 @@ printf -v import_command 'bash %q import-staged %q --target-root=%q --cleanup=no
 if [[ "${#restore_args[@]}" -gt 0 ]]; then
   for arg in "${restore_args[@]}"; do printf -v import_command '%s %q' "$import_command" "$arg"; done
 fi
-set_log_phase restore
+lock_retain=yes
+relay_phase restore
 printf -v login_command 'bash -lc %q' "$import_command"
 ssh "${dest_ssh[@]}" "$destination" "$login_command"
 printf -v rollback_marker_command 'umask 077; printf "%%s\\n" %q > %q' "$rollback_dir" "$remote/current-rollback"
 ssh "${dest_ssh[@]}" "$destination" "$rollback_marker_command" || \
   die "Migration imported, but rollback readiness could not be recorded"
-set_log_phase complete
+relay_phase complete
+lock_retain=no
 log "Relay migration completed. Rerun the same command for checksum-based catch-up."

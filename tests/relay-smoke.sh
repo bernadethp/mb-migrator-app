@@ -53,6 +53,7 @@ if [[ "${1:-}" == bash && "${2:-}" == -s ]]; then
 fi
 # Strip the login shell solely to keep the fixture PATH in this isolated test.
 if [[ "$*" == 'bash -lc '* ]]; then
+  [[ "${RELAY_FAIL_RESTORE:-0}" != 1 ]] || exit 78
   eval "set -- $*"
   exec bash -c "$3"
 fi
@@ -105,7 +106,7 @@ run_relay() {
     --target-root="$T/target" --state-dir="$T/state" \
     --source-identity="$T/source-key" --destination-identity="$T/destination-key" \
     --source-known-hosts="$T/source-known-hosts" --destination-known-hosts="$T/destination-known-hosts" \
-    --db-import=no --mu-plugins=skip --root-extras=skip --yes
+    --db-import=no --mu-plugins=skip --root-extras=skip --yes "$@"
 }
 run_relay > "$T/first.log"
 [[ "$(cat "$T/target/wp-content/uploads/test.txt")" == first ]]
@@ -146,4 +147,31 @@ fi
 [[ "$(cat "$T/target/wp-content/uploads/test.txt")" == other ]]
 # No local lock remains after the handled failure.
 test "$(find "$T/state" -name lock -type d | wc -l | tr -d ' ')" == 0
+relay_work="$(find "$T/state" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+test -n "$relay_work"
+if RELAY_FAIL_RESTORE=1 run_relay > "$T/failed-restore.log" 2>&1; then
+  echo 'Failed destination restore unexpectedly completed' >&2; exit 1
+fi
+test -f "$relay_work/lock/owner"
+grep -q '^phase=restore$' "$relay_work/lock/owner"
+if run_relay --recover-stale-lock > "$T/ambiguous-restore-recovery.log" 2>&1; then
+  echo 'Ambiguous destination restore lock was unexpectedly recovered' >&2; exit 1
+fi
+grep -q 'reconcile the destination and rollback point manually' "$T/ambiguous-restore-recovery.log"
+rm -f "$relay_work/lock/owner"
+rmdir "$relay_work/lock"
+mkdir "$relay_work/lock"
+printf 'host=%s\npid=%s\nphase=transfer\n' "$(uname -n)" "$$" > "$relay_work/lock/owner"
+if run_relay --recover-stale-lock > "$T/active-lock.log" 2>&1; then
+  echo 'Active relay lock was unexpectedly recovered' >&2; exit 1
+fi
+grep -q 'owned by active PID' "$T/active-lock.log"
+printf 'host=%s\npid=2147483647\nphase=transfer\n' "$(uname -n)" > "$relay_work/lock/owner"
+if run_relay > "$T/stale-lock-without-confirmation.log" 2>&1; then
+  echo 'Stale relay lock was recovered without explicit confirmation' >&2; exit 1
+fi
+grep -q -- '--recover-stale-lock' "$T/stale-lock-without-confirmation.log"
+run_relay --recover-stale-lock > "$T/recovered-lock.log" 2>&1
+grep -q 'Recovered relay lock from dead PID' "$T/recovered-lock.log"
+test ! -d "$relay_work/lock"
 printf 'relay smoke test passed\n'
