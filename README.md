@@ -4,8 +4,8 @@
 
 This is the independent command-line engine used by the MightyBox Assisted
 Migration application. It is maintained separately from
-`mightybox-io/mb-migrator`; its remote-run defaults and examples resolve only
-to this repository.
+`mightybox-io/mb-migrator`; its remote-run examples resolve only to this
+repository and never default to a mutable branch.
 
 Print the exact tool version with `mb-migrator --version`.
 
@@ -18,6 +18,41 @@ smoke gate used by GitHub Actions:
 
 The command fails explicitly when a required local runtime is unavailable; a
 missing tool is never reported as a passing or skipped check.
+
+## Versioned and verified distribution
+
+Supported releases use deterministic `mb-migrator-VERSION.tar.gz` archives, a
+SHA-256 sidecar, an embedded version/revision manifest, and GitHub build
+provenance. The tag workflow runs the complete validation gate before it builds,
+verifies, attests and publishes assets. Do not create `v1.0.0` until the MightyBox
+Milestone 14 security and live-acceptance gates authorize it.
+
+Build the same bytes twice from one revision and verify them locally:
+
+```bash
+./scripts/build-release.sh dist-one
+./scripts/build-release.sh dist-two
+cmp dist-one/mb-migrator-0.1.0.tar.gz dist-two/mb-migrator-0.1.0.tar.gz
+./scripts/verify-release.sh \
+  dist-one/mb-migrator-0.1.0.tar.gz \
+  dist-one/mb-migrator-0.1.0.tar.gz.sha256 \
+  0.1.0 FULL_40_CHARACTER_RELEASE_COMMIT_SHA
+```
+
+After a supported release exists, remote execution requires both its semantic
+version and exact release commit. It refuses a missing/malformed checksum,
+modified archive, version mismatch or revision mismatch before running code:
+
+```bash
+MB_MIGRATOR_VERSION=1.0.0 \
+MB_MIGRATOR_REVISION=FULL_40_CHARACTER_RELEASE_COMMIT_SHA \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/v1.0.0/remote-run.sh)" -- --version
+```
+
+Operators can independently verify the published archive provenance with
+`gh attestation verify mb-migrator-1.0.0.tar.gz --repo bernadethp/mb-migrator-app`.
+Development execution is separate: `MB_MIGRATOR_REF` must be a full 40-character
+commit SHA and the runner prints a prominent non-release warning.
 
 It is built for migration work where a single provider export archive contains site files plus split SQL database dumps. The first supported provider adapter is GridPane-style SFTP exports. The project is intentionally modular so support for other providers can be added behind provider adapters.
 
@@ -36,7 +71,7 @@ The commands can be run without cloning this repository.
 On the old host, create the package:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- \
   export-site \
   --source-root=/path/to/wordpress \
   --output="$HOME/wordpress-package.tar.gz"
@@ -68,7 +103,7 @@ scp wordpress-package.tar.gz* user@new-host:~/
 On the new host, verify and import the package:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- \
   import-site "$HOME/wordpress-package.tar.gz" \
   --target-root=/srv/htdocs \
   --new-url=https://new.example.com
@@ -79,7 +114,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-a
 For an unattended import:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- \
   import-site "$HOME/wordpress-package.tar.gz" \
   --target-root=/srv/htdocs \
   --new-url=https://new.example.com \
@@ -104,7 +139,7 @@ Use the outbound push workflow when the old host cannot accept inbound SSH but c
 For the normal guided migration, run this single command on the old host:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- push
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- push
 ```
 
 The wizard:
@@ -118,7 +153,7 @@ The wizard:
 You may supply known values up front while keeping the guided pause:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- \
   push \
   --destination=USER@NEW-HOST \
   --port=22 \
@@ -132,7 +167,7 @@ GridPane's standard parent-level `wp-config.php` without copying that file into
 the migration package:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- \
   push \
   --source-root=/var/www/example.com/htdocs \
   --destination=USER@NEW-HOST \
@@ -171,7 +206,7 @@ After a successful URL replacement, the importer flushes the WordPress object ca
 If either host lacks `rsync`, automatic mode falls back to building and transferring the portable tar package. Use `--transport=rsync` to require direct transfer or `--transport=package` to force the older package workflow:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- \
   push-site \
   --transport=rsync \
   --source-db-method=auto \
@@ -208,14 +243,14 @@ The repository does not need to be cloned onto the new host. Each command downlo
 Pair the new host with the legacy host:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- \
   pair user@legacy-host
 ```
 
 Preflight both hosts:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- \
   doctor \
   --source=user@legacy-host \
   --source-root=/var/www/webroot/ROOT \
@@ -225,7 +260,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-a
 Run the migration:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- \
   pull user@legacy-host \
   --source-root=/var/www/webroot/ROOT \
   --target-root=/srv/htdocs \
@@ -235,14 +270,15 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-a
 Run the same migration again as a catch-up before cutover:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- \
   pull user@legacy-host \
   --source-root=/var/www/webroot/ROOT \
   --target-root=/srv/htdocs \
   --continue-existing
 ```
 
-Set `MB_MIGRATOR_REF` before the command to run a specific branch, tag, or commit instead of `main`.
+Development remote execution requires `MB_MIGRATOR_REF` to be an immutable full
+40-character commit SHA. Branches, tags and abbreviated revisions are refused.
 
 Pair the hosts first:
 
@@ -324,15 +360,15 @@ Version one supports WordPress single-site installations. Multisite is rejected 
 Run without installing the repo first:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- restore /path/to/export.tar.gz --target-root=/srv/htdocs --dry-run
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- restore /path/to/export.tar.gz --target-root=/srv/htdocs --dry-run
 ```
 
 The remote runner downloads the repo into a temporary directory, runs `bin/mb-migrator`, then removes the temporary directory when it exits.
 
-Use a branch, tag, or commit by setting `MB_MIGRATOR_REF`:
+Use an exact development commit by setting `MB_MIGRATOR_REF`:
 
 ```bash
-MB_MIGRATOR_REF=main bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- restore /path/to/export.tar.gz --target-root=/srv/htdocs --dry-run
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- restore /path/to/export.tar.gz --target-root=/srv/htdocs --dry-run
 ```
 
 ## Local Usage
@@ -736,7 +772,7 @@ Destination WP-CLI commands are launched from inside the target root rather than
 Before a restore, run:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- doctor \
+MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- doctor \
   --target-root=/srv/htdocs \
   --archive=/path/to/export.tar.gz
 ```
@@ -757,7 +793,7 @@ The doctor command checks:
 The one-line runner downloads itself into a temporary directory. If `/tmp` is not usable on a gateway host, set `MB_MIGRATOR_TMPDIR` to a writable location:
 
 ```bash
-MB_MIGRATOR_TMPDIR=/srv/htdocs bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/main/remote-run.sh)" -- doctor \
+MB_MIGRATOR_TMPDIR=/srv/htdocs MB_MIGRATOR_REF=4fc933afe55c49a9a3b8914a2e70fc0f18cac137 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/4fc933afe55c49a9a3b8914a2e70fc0f18cac137/remote-run.sh)" -- doctor \
   --target-root=/srv/htdocs \
   --archive=/path/to/export.tar.gz
 ```

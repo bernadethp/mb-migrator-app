@@ -8,6 +8,9 @@ restore-*/
 *.backup-??????????????
 db-backup-before-import-*.sql
 
+# Local release builds
+/dist*/
+
 # OS/editor files
 .DS_Store
 .idea/
