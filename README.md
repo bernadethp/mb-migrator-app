@@ -702,7 +702,7 @@ In `--dry-run` mode, WP-CLI search-replace is also run with `--dry-run`.
 --provider=auto|gridpane|legacy-mightybox|wordpress-package|wpengine
                                   Export provider adapter to use. Default: auto
 --target-root=PATH                WordPress document root to restore into
---stage-dir=PATH                  Staging directory. Default: target-root/restore-<archive>-<timestamp>
+--stage-dir=PATH                  Private staging directory. Default: user state/mb-migrator/staging
 --db-output=PATH                  Combined SQL output path. Default: stage/<archive>-combined-phpmyadmin-import.sql
 --old-url=URL                     Old URL for WP-CLI search-replace
 --new-url=URL                     New URL for WP-CLI search-replace
@@ -726,6 +726,18 @@ In `--dry-run` mode, WP-CLI search-replace is also run with `--dry-run`.
 --migrate-config                  After confirmation, replace target wp-config.php with exported wp-config.php
 --help                            Show help
 ```
+
+Archive restores use a private staging directory under
+`${MB_MIGRATOR_STATE_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/mb-migrator}/staging`
+unless `--stage-dir` is supplied explicitly. The directory is mode `0700`, and
+reports and prepared SQL inherit the command's restrictive `umask 077`; do not
+place an explicit staging directory inside a public document root.
+
+Before extracting a tar archive, the migrator rejects traversal, duplicate or
+case-colliding paths, unsupported special files, and unsafe links. It also
+limits archives to 500,000 entries and 1 TiB of declared uncompressed content
+by default. Operators can lower these ceilings with
+`MB_MIGRATOR_MAX_ARCHIVE_ENTRIES` and `MB_MIGRATOR_MAX_ARCHIVE_BYTES`.
 
 ## Requirements
 

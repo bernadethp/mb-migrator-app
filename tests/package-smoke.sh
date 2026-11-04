@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mb-package-test.XXXXXX")"
+export XDG_STATE_HOME="$TEST_ROOT/state"
 SOURCE="$TEST_ROOT/source"
 TARGET="$TEST_ROOT/target"
 STAGED_TARGET="$TEST_ROOT/staged-target"
@@ -114,9 +115,14 @@ test -f "$TARGET/verification.html"
 [[ "$(file_mode "$TARGET/wp-content/plugins/sample-plugin/plugin.php")" == "644" ]]
 [[ "$(file_mode "$TARGET/wp-content/uploads/2026/07/package.txt")" == "644" ]]
 [[ "$(file_mode "$TARGET/verification.html")" == "644" ]]
-grep -R -q 'Source URL read from package manifest: https://source.example.test' "$TARGET"/restore-*/migration-report.txt
-grep -R -q 'URL rewrite pending' "$TARGET"/restore-*/migration-report.txt
-COMBINED_SQL="$(find "$TARGET" -name '*-combined-phpmyadmin-import.sql' -print -quit)"
+PRIVATE_STAGE="$(find "$XDG_STATE_HOME/mb-migrator/staging" -mindepth 1 -maxdepth 1 -type d -name 'restore-*' -print -quit)"
+test -n "$PRIVATE_STAGE"
+test ! -e "$TARGET/restore-portable-site"
+[[ "$(file_mode "$PRIVATE_STAGE")" == "700" ]]
+[[ "$(file_mode "$PRIVATE_STAGE/migration-report.txt")" == "600" ]]
+grep -q 'Source URL read from package manifest: https://source.example.test' "$PRIVATE_STAGE/migration-report.txt"
+grep -q 'URL rewrite pending' "$PRIVATE_STAGE/migration-report.txt"
+COMBINED_SQL="$(find "$PRIVATE_STAGE" -name '*-combined-phpmyadmin-import.sql' -print -quit)"
 test -n "$COMBINED_SQL"
 if grep -Eqi '\bDEFINER[[:space:]]*=' "$COMBINED_SQL"; then
   printf 'combined SQL unexpectedly retained a source DEFINER clause\n' >&2

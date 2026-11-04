@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mb-migrator-live-test.XXXXXX")"
+export XDG_STATE_HOME="$TEST_ROOT/state"
 SOURCE="$TEST_ROOT/source"
 TARGET="$TEST_ROOT/target"
 STATE="$TEST_ROOT/state"
@@ -99,7 +100,7 @@ test -f "$TARGET/wp-content/themes/sample-theme/style.css"
 test -f "$TARGET/wp-content/uploads/2026/07/initial.txt"
 test -f "$TARGET/verification.html"
 test ! -f "$TARGET/wp-load.php"
-grep -R -q 'URL rewrite pending' "$TARGET"/restore-*/migration-report.txt
+grep -R -q 'URL rewrite pending' "$XDG_STATE_HOME/mb-migrator/staging"/restore-*/migration-report.txt
 
 snapshot="$(find "$STATE/migrations" -path '*/snapshots/*.tar.gz' -type f | head -n 1)"
 test -n "$snapshot"
@@ -130,7 +131,7 @@ PATH="$FAKE_BIN:$PATH" "$ROOT_DIR/bin/mb-migrator" pull legacy@test \
 
 test -f "$TARGET/wp-content/uploads/2026/07/catch-up.txt"
 test -f "$TARGET/wp-content/uploads/2026/07/initial.txt"
-grep -R -q 'URL rewrite pending' "$TARGET"/restore-*/migration-report.txt
+grep -R -q 'URL rewrite pending' "$XDG_STATE_HOME/mb-migrator/staging"/restore-*/migration-report.txt
 
 printf '%s\n' 'rsync catch-up' > "$SOURCE/wp-content/uploads/2026/07/rsync.txt"
 export FAKE_REMOTE_RSYNC=1
