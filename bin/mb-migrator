@@ -17,6 +17,7 @@ case "${1:-}" in
     printf '\n'
     "$SCRIPT_DIR/mb-push-migrate" --help
     "$SCRIPT_DIR/mb-relay-migrate" --help
+    "$SCRIPT_DIR/mb-relay-verify" --help
     "$SCRIPT_DIR/mb-migration-state" --help
     printf '\nArchive restore options:\n\n'
     exec "$SCRIPT_DIR/wp-export-migrate" --help
@@ -28,6 +29,10 @@ case "${1:-}" in
   relay-doctor)
     shift
     exec "$SCRIPT_DIR/mb-relay-doctor" "$@"
+    ;;
+  relay-verify)
+    shift
+    exec "$SCRIPT_DIR/mb-relay-verify" "$@"
     ;;
   safety|rollback)
     exec "$SCRIPT_DIR/mb-migration-state" "$@"

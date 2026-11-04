@@ -33,5 +33,5 @@ else
 fi
 
 tar -xzf "$ARCHIVE" -C "$WORKDIR" --strip-components=1
-chmod +x "$WORKDIR/bin/mb-migrator" "$WORKDIR/bin/mb-live-migrate" "$WORKDIR/bin/mb-package" "$WORKDIR/bin/mb-push-migrate" "$WORKDIR/bin/mb-relay-migrate" "$WORKDIR/bin/mb-relay-doctor" "$WORKDIR/bin/wp-export-migrate"
+chmod +x "$WORKDIR/bin/mb-migrator" "$WORKDIR/bin/mb-live-migrate" "$WORKDIR/bin/mb-package" "$WORKDIR/bin/mb-push-migrate" "$WORKDIR/bin/mb-relay-migrate" "$WORKDIR/bin/mb-relay-doctor" "$WORKDIR/bin/mb-relay-verify" "$WORKDIR/bin/wp-export-migrate"
 bash "$WORKDIR/bin/mb-migrator" "$@"

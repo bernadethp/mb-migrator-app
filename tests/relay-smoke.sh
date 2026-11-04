@@ -21,7 +21,12 @@ case "$*" in
   *'core is-installed --network'*) exit 1 ;;
   *'core is-installed'*) exit 0 ;;
   *'post list '*--format=count*) [[ "${RELAY_TARGET_MODIFIED:-0}" == 1 ]] && echo 4 || echo 2 ;;
+  *'post list '*--format=json*) printf '[{"ID":1,"post_type":"page","post_status":"publish","post_name":"evidence","post_title":"Evidence","post_content":"Marker","post_excerpt":"","post_parent":0,"menu_order":0}]\n' ;;
+  *'user list --role=administrator --format=count'*) echo 1 ;;
   *'user list --format=count'*) echo 1 ;;
+  *'plugin list --status=active --field=name'*) echo sample-plugin ;;
+  *'theme list --status=active --field=name'*) echo sample-theme ;;
+  *'search-replace '*--format=count*) echo 0 ;;
   *'db query SELECT 1'*) echo 1 ;;
   *'db export '*)
     [[ "${RELAY_FAIL_DATABASE:-0}" != 1 ]] || exit 77
@@ -68,6 +73,11 @@ while [[ $# -gt 0 ]]; do
 done
 exec "$RELAY_REAL_RSYNC" "${args[@]}"
 RSYNC
+cat > "$T/bin/curl" <<'CURL'
+#!/usr/bin/env bash
+set -eu
+printf '200'
+CURL
 chmod +x "$T/bin/"*
 export RELAY_REAL_RSYNC="$REAL_RSYNC"
 export PATH="$T/bin:$PATH"
@@ -99,6 +109,28 @@ run_relay() {
 }
 run_relay > "$T/first.log"
 [[ "$(cat "$T/target/wp-content/uploads/test.txt")" == first ]]
+verify_relay() {
+  "$ROOT_DIR/bin/mb-migrator" relay-verify source@test --destination=dest@test --source-root="$T/source" \
+    --target-root="$T/target" --run-id=019a4dc8-d9ff-73f2-8e98-2e6905994c10 \
+    --expected-url=https://source.example.test --expected-safety=disabled \
+    --source-identity="$T/source-key" --destination-identity="$T/destination-key" \
+    --source-known-hosts="$T/source-known-hosts" --destination-known-hosts="$T/destination-known-hosts" \
+    --json
+}
+verify_relay > "$T/verified.json"
+php -r 'json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);' "$T/verified.json"
+grep -q '"status":"verified"' "$T/verified.json"
+grep -q '"run_id":"019a4dc8-d9ff-73f2-8e98-2e6905994c10"' "$T/verified.json"
+grep -q '"media":true' "$T/verified.json"
+grep -q '"rollback":true' "$T/verified.json"
+grep -q '"public_https":true' "$T/verified.json"
+printf corrupt > "$T/target/wp-content/uploads/test.txt"
+if verify_relay > "$T/corrupt-verification.json"; then
+  echo 'Corrupt destination media unexpectedly verified' >&2; exit 1
+fi
+php -r 'json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);' "$T/corrupt-verification.json"
+grep -q '"status":"failed"' "$T/corrupt-verification.json"
+grep -q '"media":false' "$T/corrupt-verification.json"
 printf other > "$T/source/wp-content/uploads/test.txt"
 printf new > "$T/source/wp-content/uploads/new.txt"
 run_relay > "$T/second.log"

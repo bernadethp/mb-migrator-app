@@ -874,7 +874,40 @@ mb-migrator relay user@source.example.com \
   --db-import=yes --mu-plugins=copy --root-extras=copy --safety=enable --yes
 ```
 
+Command completion is not verified migration completion. Before presenting a
+destination for review, run the independent receipt check with the same pinned
+SSH identities and known-hosts files:
+
+```bash
+mb-migrator relay-verify user@source.example.com \
+  --destination=user@destination.example.com \
+  --source-root=/sites/example \
+  --target-root=/srv/htdocs \
+  --run-id=019a4dc8-d9ff-73f2-8e98-2e6905994c10 \
+  --expected-url=https://new.example.com \
+  --expected-safety=enabled \
+  --source-identity=/private/source-key \
+  --destination-identity=/private/destination-key \
+  --source-known-hosts=/private/source-known-hosts \
+  --destination-known-hosts=/private/destination-known-hosts \
+  --json
+```
+
+The command returns non-zero unless WordPress bootstraps, home and siteurl match,
+normalized post/page content and the complete uploads manifest match their source
+SHA-256 digests, active plugin/theme state matches, an administrator account
+exists, serialized old-URL matches are zero, public HTTPS succeeds, the exact
+migration safety state matches, and the current rollback point is ready. The JSON
+receipt contains only the run identity, booleans, counts, digests, the tool
+version and a timestamp;
+it never includes content, database rows, credentials, private paths or raw SSH
+output. Administrator presence is not proof that a particular customer password
+works, so the application still requires a real WordPress Admin login during
+customer review.
+
 Rerun the same command for catch-up. Each run exports a fresh full database.
+Each successful import also records a new private rollback point as current; a
+failed export or import cannot replace that marker with stale rollback evidence.
 Persistent private caches on the workstation and destination allow rsync to send
 only changed file content, comparing checksums rather than only timestamps.
 The destination cache is compared with the workstation cache before import;

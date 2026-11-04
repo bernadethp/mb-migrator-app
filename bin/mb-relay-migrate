@@ -39,6 +39,7 @@ while [[ $# -gt 0 ]]; do
     --destination-known-hosts=*) destination_known_hosts="${1#*=}" ;;
     --source-db-method=*) method="${1#*=}" ;;
     --state-dir=*) state_dir="${1#*=}" ;;
+    --rollback-dir=*) die "Relay owns its private rollback location" ;;
     --cleanup=*|--delete-stage-after-success|--delete-archive-after-success|--delete-sql-after-import)
       die "Relay retains its cache; remove private state separately after cutover" ;;
     --dry-run) die "Relay collects a fresh snapshot; use doctor for a non-mutating preflight" ;;
@@ -81,6 +82,9 @@ ssh "${source_ssh[@]}" "$source_host" bash -s -- preflight "$source_root" "$meth
 remote="$(ssh "${dest_ssh[@]}" "$destination" "umask 077; mkdir -p \"\$HOME/.local/state/mb-migrator/relay/$id\" && cd \"\$HOME/.local/state/mb-migrator/relay/$id\" && pwd -P")"
 [[ "$remote" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "Destination returned an unsupported staging path"
 ssh "${dest_ssh[@]}" "$destination" "command -v rsync >/dev/null && test -d '$target_root/wp-content' && mkdir -p '$remote/package' '$remote/runner'"
+rollback_token="$(date -u +%Y%m%dT%H%M%SZ)-$$-${RANDOM:-0}"
+[[ "$rollback_token" =~ ^[A-Za-z0-9._-]+$ ]] || die "Could not create a safe rollback identity"
+rollback_dir="$remote/rollback-$rollback_token"
 printf -v source_transport 'ssh'; for arg in "${source_ssh[@]}"; do printf -v source_transport '%s %q' "$source_transport" "$arg"; done
 printf -v dest_transport 'ssh'; for arg in "${dest_ssh[@]}"; do printf -v dest_transport '%s %q' "$dest_transport" "$arg"; done
 set_log_phase files
@@ -104,12 +108,16 @@ comparison="$(rsync -rlcn --safe-links --out-format='%n' -e "$dest_transport" "$
 tar -czf "$work/runner.tar.gz" -C "$ROOT_DIR" bin lib providers
 a="$(printf '%q' "$remote/runner")"
 ssh "${dest_ssh[@]}" "$destination" "tar -xzf - -C $a" < "$work/runner.tar.gz"
-printf -v import_command 'bash %q import-staged %q --target-root=%q --cleanup=no' "$remote/runner/bin/mb-migrator" "$remote/package" "$target_root"
+printf -v import_command 'bash %q import-staged %q --target-root=%q --cleanup=no --rollback-dir=%q' \
+  "$remote/runner/bin/mb-migrator" "$remote/package" "$target_root" "$rollback_dir"
 if [[ "${#restore_args[@]}" -gt 0 ]]; then
   for arg in "${restore_args[@]}"; do printf -v import_command '%s %q' "$import_command" "$arg"; done
 fi
 set_log_phase restore
 printf -v login_command 'bash -lc %q' "$import_command"
 ssh "${dest_ssh[@]}" "$destination" "$login_command"
+printf -v rollback_marker_command 'umask 077; printf "%%s\\n" %q > %q' "$rollback_dir" "$remote/current-rollback"
+ssh "${dest_ssh[@]}" "$destination" "$rollback_marker_command" || \
+  die "Migration imported, but rollback readiness could not be recorded"
 set_log_phase complete
 log "Relay migration completed. Rerun the same command for checksum-based catch-up."
