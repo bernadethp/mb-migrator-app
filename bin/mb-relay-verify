@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/lib/util.sh"
+set_log_context relay-verify verify
+
+usage() {
+  cat <<'EOF'
+Independent relay verification:
+  mb-migrator relay-verify USER@SOURCE --destination=USER@TARGET \
+    --source-root=/sites/example --target-root=/srv/htdocs \
+    --run-id=UUID \
+    --expected-url=https://destination.example \
+    --expected-safety=enabled|disabled [options]
+  --source-port=22 --destination-port=22
+  --source-identity=PATH --destination-identity=PATH
+  --source-known-hosts=PATH --destination-known-hosts=PATH
+  --json                      Emit one privacy-safe structured receipt
+
+The receipt contains booleans, counts and SHA-256 digests only. It never emits
+WordPress content, database rows, credentials, private paths or raw SSH output.
+EOF
+}
+
+json_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\t'/\\t}"
+  printf '%s' "$value"
+}
+
+value_for() {
+  printf '%s\n' "$1" | awk -F= -v key="$2" '$1 == key {sub(/^[^=]*=/, ""); print; exit}'
+}
+
+bool_json() { [[ "$1" == yes ]] && printf true || printf false; }
+
+source_host="${1:-}"
+if [[ "$source_host" == --help || -z "$source_host" ]]; then usage; exit 0; fi
+shift
+destination=""; source_root=""; target_root=""; run_id=""; expected_url=""; expected_safety=""
+source_port=22; destination_port=22; source_identity=""; destination_identity=""
+source_known_hosts=""; destination_known_hosts=""; json=no
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --destination=*) destination="${1#*=}" ;;
+    --source-root=*) source_root="${1#*=}" ;;
+    --target-root=*) target_root="${1#*=}" ;;
+    --run-id=*) run_id="${1#*=}" ;;
+    --expected-url=*) expected_url="${1#*=}" ;;
+    --expected-safety=*) expected_safety="${1#*=}" ;;
+    --source-port=*) source_port="${1#*=}" ;;
+    --destination-port=*) destination_port="${1#*=}" ;;
+    --source-identity=*) source_identity="${1#*=}" ;;
+    --destination-identity=*) destination_identity="${1#*=}" ;;
+    --source-known-hosts=*) source_known_hosts="${1#*=}" ;;
+    --destination-known-hosts=*) destination_known_hosts="${1#*=}" ;;
+    --json) json=yes ;;
+    *) die "Unknown relay verification option" ;;
+  esac
+  shift
+done
+[[ "$run_id" =~ ^[a-fA-F0-9-]{36}$ ]] || die "A migration run UUID is required"
+
+for host in "$source_host" "$destination"; do
+  [[ "$host" =~ ^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$ ]] || die "Expected USER@HOST for both SSH endpoints"
+done
+for path in "$source_root" "$target_root"; do
+  [[ "$path" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "Both document roots must be absolute paths without shell characters"
+done
+for port in "$source_port" "$destination_port"; do
+  [[ "$port" =~ ^[0-9]+$ && "$port" -gt 0 && "$port" -le 65535 ]] || die "Invalid SSH port"
+done
+[[ "$expected_url" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]+)?(/.*)?$ ]] || die "Expected destination URL is invalid"
+case "$expected_safety" in enabled|disabled) ;; *) die "Expected safety state is required" ;; esac
+for path in "$source_identity" "$destination_identity" "$source_known_hosts" "$destination_known_hosts"; do
+  [[ -z "$path" || ( -f "$path" && ! -L "$path" ) ]] || die "A required SSH identity or known-hosts file is unavailable"
+done
+
+source_ssh=(-p "$source_port" -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=8)
+dest_ssh=(-p "$destination_port" -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=8)
+[[ -z "$source_identity" ]] || source_ssh+=(-i "$source_identity" -o IdentitiesOnly=yes -o IdentityAgent=none)
+[[ -z "$destination_identity" ]] || dest_ssh+=(-i "$destination_identity" -o IdentitiesOnly=yes -o IdentityAgent=none)
+[[ -z "$source_known_hosts" ]] || source_ssh+=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$source_known_hosts")
+[[ -z "$destination_known_hosts" ]] || dest_ssh+=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$destination_known_hosts")
+
+if command -v sha256sum >/dev/null 2>&1; then hash=(sha256sum); else hash=(shasum -a 256); fi
+relay_id="$(printf '%s' "$source_host|$source_port|$source_root|$destination|$destination_port|$target_root" | "${hash[@]}" | cut -c1-20)"
+remote="$(ssh "${dest_ssh[@]}" "$destination" "cd \"\$HOME/.local/state/mb-migrator/relay/$relay_id\" 2>/dev/null && pwd -P")" || remote=""
+[[ "$remote" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "Retained relay state is unavailable"
+rollback_dir="$(ssh "${dest_ssh[@]}" "$destination" "cat '$remote/current-rollback' 2>/dev/null")" || rollback_dir=""
+case "$rollback_dir" in "$remote"/rollback-[A-Za-z0-9._-]*) ;; *) rollback_dir="" ;; esac
+
+source_output="$(ssh "${source_ssh[@]}" "$source_host" bash -s -- \
+  source "$source_root" "" ignored "" "" "" < "$ROOT_DIR/lib/remote-verification.sh" 2>/dev/null)" || die "Source verification failed"
+source_url="$(value_for "$source_output" home)"
+[[ "$source_url" =~ ^https?://[^[:space:]]+$ ]] || die "Source verification returned an invalid URL"
+safety_sha256="$("${hash[@]}" "$ROOT_DIR/lib/migration-safety.php" | awk '{print $1}')"
+destination_output="$(ssh "${dest_ssh[@]}" "$destination" bash -s -- \
+  destination "$target_root" "$expected_url" "$expected_safety" "$rollback_dir" "$source_url" "$safety_sha256" \
+  < "$ROOT_DIR/lib/remote-verification.sh" 2>/dev/null)" || die "Destination verification failed"
+
+source_wordpress="$(value_for "$source_output" wordpress)"
+destination_wordpress="$(value_for "$destination_output" wordpress)"
+destination_home="$(value_for "$destination_output" home)"
+destination_siteurl="$(value_for "$destination_output" siteurl)"
+source_content_count="$(value_for "$source_output" content_count)"
+destination_content_count="$(value_for "$destination_output" content_count)"
+source_content_sha="$(value_for "$source_output" content_sha256)"
+destination_content_sha="$(value_for "$destination_output" content_sha256)"
+source_media_count="$(value_for "$source_output" media_count)"
+destination_media_count="$(value_for "$destination_output" media_count)"
+source_media_sha="$(value_for "$source_output" media_sha256)"
+destination_media_sha="$(value_for "$destination_output" media_sha256)"
+source_plugins_count="$(value_for "$source_output" active_plugins_count)"
+destination_plugins_count="$(value_for "$destination_output" active_plugins_count)"
+source_plugins_sha="$(value_for "$source_output" active_plugins_sha256)"
+destination_plugins_sha="$(value_for "$destination_output" active_plugins_sha256)"
+source_theme_sha="$(value_for "$source_output" active_theme_sha256)"
+destination_theme_sha="$(value_for "$destination_output" active_theme_sha256)"
+admin_count="$(value_for "$destination_output" administrator_count)"
+old_url_matches="$(value_for "$destination_output" old_url_matches)"
+safety_state="$(value_for "$destination_output" safety_state)"
+rollback_state="$(value_for "$destination_output" rollback_state)"
+
+wordpress_check=no; urls_check=no; content_check=no; media_check=no; plugins_check=no; theme_check=no
+administrator_check=no; serialized_urls_check=no; safety_check=no; rollback_check=no
+public_https_check=no; http_status=0
+[[ "$source_wordpress" == installed && "$destination_wordpress" == installed ]] && wordpress_check=yes
+[[ "${destination_home%/}" == "${expected_url%/}" && "${destination_siteurl%/}" == "${expected_url%/}" ]] && urls_check=yes
+[[ "$source_content_count" =~ ^[0-9]+$ && "$source_content_count" == "$destination_content_count" \
+  && "$source_content_sha" =~ ^[a-f0-9]{64}$ && "$source_content_sha" == "$destination_content_sha" ]] && content_check=yes
+[[ "$source_media_count" =~ ^[0-9]+$ && "$source_media_count" == "$destination_media_count" \
+  && "$source_media_sha" =~ ^[a-f0-9]{64}$ && "$source_media_sha" == "$destination_media_sha" ]] && media_check=yes
+[[ "$source_plugins_count" =~ ^[0-9]+$ && "$source_plugins_count" == "$destination_plugins_count" \
+  && "$source_plugins_sha" =~ ^[a-f0-9]{64}$ && "$source_plugins_sha" == "$destination_plugins_sha" ]] && plugins_check=yes
+[[ "$source_theme_sha" =~ ^[a-f0-9]{64}$ && "$source_theme_sha" == "$destination_theme_sha" ]] && theme_check=yes
+[[ "$admin_count" =~ ^[0-9]+$ && "$admin_count" -gt 0 ]] && administrator_check=yes
+[[ "$old_url_matches" == 0 ]] && serialized_urls_check=yes
+[[ "$safety_state" == "$expected_safety" ]] && safety_check=yes
+[[ "$rollback_state" == ready ]] && rollback_check=yes
+if command -v curl >/dev/null 2>&1; then
+  http_status="$(curl --proto '=https' --tlsv1.2 -L -sS -o /dev/null -w '%{http_code}' --max-time 30 "$expected_url" 2>/dev/null || true)"
+  [[ "$http_status" =~ ^[23][0-9][0-9]$ ]] && public_https_check=yes
+fi
+[[ "$http_status" =~ ^[0-9]{3}$ ]] || http_status=0
+
+status=verified; reason=""
+for check in "$wordpress_check" "$urls_check" "$content_check" "$media_check" "$plugins_check" "$theme_check" \
+  "$administrator_check" "$serialized_urls_check" "$safety_check" "$rollback_check" "$public_https_check"; do
+  if [[ "$check" != yes ]]; then status=failed; reason=migration.destination_verification_failed; break; fi
+done
+
+if [[ "$json" == yes ]]; then
+  printf '{"schema_version":1,"tool_version":"%s","run_id":"%s","status":"%s","reason_code":%s,"verified_at":"%s","checks":{' \
+    "$(json_escape "$(<"$ROOT_DIR/VERSION")")" "$(json_escape "$run_id")" "$status" \
+    "$([[ -z "$reason" ]] && printf null || printf '"%s"' "$(json_escape "$reason")")" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '"wordpress":%s,"urls":%s,"content":%s,"media":%s,"plugins":%s,"theme":%s,' \
+    "$(bool_json "$wordpress_check")" "$(bool_json "$urls_check")" "$(bool_json "$content_check")" \
+    "$(bool_json "$media_check")" "$(bool_json "$plugins_check")" "$(bool_json "$theme_check")"
+  printf '"administrator":%s,"serialized_urls":%s,"safety":%s,"rollback":%s,"public_https":%s},' \
+    "$(bool_json "$administrator_check")" "$(bool_json "$serialized_urls_check")" \
+    "$(bool_json "$safety_check")" "$(bool_json "$rollback_check")" "$(bool_json "$public_https_check")"
+  printf '"evidence":{"content_count":%s,"content_sha256":"%s","media_count":%s,"media_sha256":"%s","active_plugins_count":%s,"active_plugins_sha256":"%s","active_theme_sha256":"%s","administrator_count":%s,"http_status":%s,"safety_state":"%s","rollback_state":"%s"}}\n' \
+    "${source_content_count:-0}" "${source_content_sha:-}" "${source_media_count:-0}" "${source_media_sha:-}" \
+    "${source_plugins_count:-0}" "${source_plugins_sha:-}" "${source_theme_sha:-}" "${admin_count:-0}" "${http_status:-0}" \
+    "$safety_state" "$rollback_state"
+else
+  if [[ "$status" == verified ]]; then log "Independent destination verification passed"; else warn "Independent destination verification failed"; fi
+fi
+
+[[ "$status" == verified ]]
