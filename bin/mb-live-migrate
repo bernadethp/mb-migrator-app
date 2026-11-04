@@ -288,9 +288,8 @@ pull_command() {
   fi
   cp "$snapshot" "$run_tmp/restore-snapshot.tar.gz"
   chmod 600 "$run_tmp/restore-snapshot.tar.gz"
-  live_stage="$TARGET_ROOT/restore-live-${migration_id}-$(date +%Y%m%d%H%M%S)-$$"
   set_log_phase restore
-  "$ROOT_DIR/bin/wp-export-migrate" restore "$run_tmp/restore-snapshot.tar.gz" --provider=legacy-mightybox --target-root="$TARGET_ROOT" --stage-dir="$live_stage" "${RESTORE_ARGS[@]}"
+  "$ROOT_DIR/bin/wp-export-migrate" restore "$run_tmp/restore-snapshot.tar.gz" --provider=legacy-mightybox --target-root="$TARGET_ROOT" "${RESTORE_ARGS[@]}"
   [[ -z "$OLD_URL" ]] || { printf '%s\n' "$OLD_URL" > "$migration_dir/old-url"; chmod 600 "$migration_dir/old-url"; }
   [[ -z "$NEW_URL" ]] || { printf '%s\n' "$NEW_URL" > "$migration_dir/new-url"; chmod 600 "$migration_dir/new-url"; }
   if [[ "$SNAPSHOT_MODE" == "delete" ]]; then

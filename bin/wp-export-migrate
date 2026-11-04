@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -36,7 +37,7 @@ Options:
                                       Export provider adapter. Default: auto
   --target-root=PATH                WordPress document root to restore into
   --archive=PATH                    Archive path for doctor preflight checks
-  --stage-dir=PATH                  Staging directory. Default: target-root/restore-<archive>-<timestamp>
+  --stage-dir=PATH                  Private staging directory. Default: user state/mb-migrator/staging
   --db-output=PATH                  Combined SQL output path. Default: stage/<archive>-combined-phpmyadmin-import.sql
   --old-url=URL                     Old URL for WP-CLI search-replace
   --new-url=URL                     New URL for WP-CLI search-replace
@@ -230,13 +231,20 @@ elif [[ -z "$STAGE_DIR" ]]; then
   archive_base="$(basename "$ARCHIVE")"
   archive_base="${archive_base%.tar.gz}"
   archive_base="${archive_base%.tgz}"
-  STAGE_DIR="$TARGET_ROOT/restore-${archive_base}-$(date +%Y%m%d%H%M%S)"
+  private_state_root="${MB_MIGRATOR_STATE_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/mb-migrator}"
+  mkdir -p "$private_state_root/staging"
+  chmod 700 "$private_state_root" "$private_state_root/staging"
+  STAGE_DIR="$private_state_root/staging/restore-${archive_base}-$(date +%Y%m%d%H%M%S)-$$-${RANDOM:-0}"
 fi
 STAGE_DIR="$(abs_path_for_create "$STAGE_DIR")"
 
 mkdir -p "$STAGE_DIR"
+if [[ "$SOURCE_IS_DIRECTORY" -eq 0 ]]; then
+  chmod 700 "$STAGE_DIR"
+fi
 REPORT_FILE="$STAGE_DIR/migration-report.txt"
 : > "$REPORT_FILE"
+chmod 600 "$REPORT_FILE"
 
 if [[ "$SOURCE_IS_DIRECTORY" -eq 1 ]]; then
   log "Package directory: $ARCHIVE"

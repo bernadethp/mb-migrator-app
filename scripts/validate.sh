@@ -48,6 +48,7 @@ smoke_suites=(
   tests/push-smoke.sh
   tests/relay-smoke.sh
   tests/release-smoke.sh
+  tests/security-smoke.sh
 )
 
 for suite in "${smoke_suites[@]}"; do
