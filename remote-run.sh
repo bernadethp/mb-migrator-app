@@ -18,6 +18,74 @@ need_cmd() {
   }
 }
 
+validate_archive() {
+  local archive="$1" expected_prefix="${2:-}"
+  local names="$WORKDIR/archive-names" metadata="$WORKDIR/archive-metadata"
+  local entry normalized folded type line prefix="" declared_bytes
+  local -a entries=() metadata_lines=() parts=()
+  local -A exact_paths=() folded_paths=()
+
+  LC_ALL=C tar --quoting-style=escape -tzf "$archive" > "$names"
+  LC_ALL=C tar --numeric-owner --quoting-style=escape -tvzf "$archive" > "$metadata"
+  mapfile -t entries < "$names"
+  mapfile -t metadata_lines < "$metadata"
+  [[ "${#entries[@]}" -gt 0 && "${#entries[@]}" -eq "${#metadata_lines[@]}" && "${#entries[@]}" -le 20000 ]] || {
+    printf '[mb-migrator:error] Downloaded archive has an unsafe entry count.\n' >&2
+    exit 1
+  }
+  declared_bytes="$(LC_ALL=C awk '$3 !~ /^[0-9]+$/ { exit 2 } { total += $3 } END { printf "%.0f\n", total }' "$metadata")" || {
+    printf '[mb-migrator:error] Downloaded archive metadata is malformed.\n' >&2
+    exit 1
+  }
+  [[ "$declared_bytes" =~ ^[0-9]+$ && "$declared_bytes" -le 536870912 ]] || {
+    printf '[mb-migrator:error] Downloaded archive exceeds the extraction limit.\n' >&2
+    exit 1
+  }
+
+  for index in "${!entries[@]}"; do
+    entry="${entries[$index]}"
+    line="${metadata_lines[$index]}"
+    type="${line:0:1}"
+    [[ "$type" == - || "$type" == d ]] || {
+      printf '[mb-migrator:error] Downloaded archive contains a link or special file.\n' >&2
+      exit 1
+    }
+    [[ "$entry" != *\\* && "$entry" != /* ]] || {
+      printf '[mb-migrator:error] Downloaded archive contains an unsafe path.\n' >&2
+      exit 1
+    }
+    normalized="${entry%/}"
+    IFS='/' read -r -a parts <<< "$normalized"
+    [[ "${#parts[@]}" -ge 1 ]] || exit 1
+    for part in "${parts[@]}"; do
+      [[ -n "$part" && "$part" != . && "$part" != .. ]] || {
+        printf '[mb-migrator:error] Downloaded archive contains path traversal.\n' >&2
+        exit 1
+      }
+    done
+    if [[ -z "$prefix" ]]; then prefix="${parts[0]}"; fi
+    [[ "${parts[0]}" == "$prefix" ]] || {
+      printf '[mb-migrator:error] Downloaded archive contains multiple roots.\n' >&2
+      exit 1
+    }
+    [[ -z "${exact_paths[$normalized]+present}" ]] || {
+      printf '[mb-migrator:error] Downloaded archive contains a duplicate path.\n' >&2
+      exit 1
+    }
+    exact_paths[$normalized]=1
+    folded="${normalized,,}"
+    [[ -z "${folded_paths[$folded]+present}" || "${folded_paths[$folded]}" == "$normalized" ]] || {
+      printf '[mb-migrator:error] Downloaded archive contains a case-colliding path.\n' >&2
+      exit 1
+    }
+    folded_paths[$folded]="$normalized"
+  done
+  [[ -z "$expected_prefix" || "$prefix" == "$expected_prefix" ]] || {
+    printf '[mb-migrator:error] Downloaded archive identity is invalid.\n' >&2
+    exit 1
+  }
+}
+
 download() {
   local url="$1" output="$2"
   if command -v curl >/dev/null 2>&1; then
@@ -70,7 +138,10 @@ else
   download "https://api.github.com/repos/$REPO/tarball/$REF" "$ARCHIVE"
 fi
 
-tar -xzf "$ARCHIVE" -C "$WORKDIR" --strip-components=1
+expected_prefix=""
+[[ -z "$RELEASE_VERSION" ]] || expected_prefix="mb-migrator-$RELEASE_VERSION"
+validate_archive "$ARCHIVE" "$expected_prefix"
+tar --no-same-owner --no-same-permissions -xzf "$ARCHIVE" -C "$WORKDIR" --strip-components=1
 if [[ -n "$RELEASE_VERSION" ]]; then
   manifest="$WORKDIR/RELEASE-MANIFEST"
   [[ -f "$manifest" && ! -L "$manifest" ]] || { printf '[mb-migrator:error] Release manifest is missing.\n' >&2; exit 1; }
@@ -81,5 +152,11 @@ if [[ -n "$RELEASE_VERSION" ]]; then
       exit 1
     }
 fi
+for executable in bin/mb-migrator bin/mb-live-migrate bin/mb-package bin/mb-push-migrate bin/mb-relay-migrate bin/mb-relay-doctor bin/mb-relay-verify bin/wp-export-migrate; do
+  [[ -f "$WORKDIR/$executable" && ! -L "$WORKDIR/$executable" ]] || {
+    printf '[mb-migrator:error] Downloaded archive has an unsafe executable layout.\n' >&2
+    exit 1
+  }
+done
 chmod +x "$WORKDIR/bin/mb-migrator" "$WORKDIR/bin/mb-live-migrate" "$WORKDIR/bin/mb-package" "$WORKDIR/bin/mb-push-migrate" "$WORKDIR/bin/mb-relay-migrate" "$WORKDIR/bin/mb-relay-doctor" "$WORKDIR/bin/mb-relay-verify" "$WORKDIR/bin/wp-export-migrate"
 bash "$WORKDIR/bin/mb-migrator" "$@"

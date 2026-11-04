@@ -49,6 +49,12 @@ MB_MIGRATOR_REVISION=FULL_40_CHARACTER_RELEASE_COMMIT_SHA \
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bernadethp/mb-migrator-app/v1.0.0/remote-run.sh)" -- --version
 ```
 
+The bootstrap also validates the downloaded tar metadata before extraction. It
+rejects links, special files, traversal, multiple roots, duplicate or
+case-colliding paths, more than 20,000 entries, and more than 512 MiB of
+declared uncompressed content. Extraction does not restore archive ownership or
+permissions, and every executable entry must be a regular file.
+
 Operators can independently verify the published archive provenance with
 `gh attestation verify mb-migrator-1.0.0.tar.gz --repo bernadethp/mb-migrator-app`.
 Development execution is separate: `MB_MIGRATOR_REF` must be a full 40-character

@@ -104,7 +104,7 @@ MB_MIGRATOR_DESTINATION_PASSWORD=gateway-secret PATH="$FAKE_BIN:$PATH" \
   "$ROOT_DIR/bin/mb-migrator" push-pair complete \
     "$pairing_id" newuser@new.example.test \
     --port=3022 \
-    "--state-dir=$STATE_DIR"
+    "--state-dir=$STATE_DIR" >"$TEST_ROOT/password-pairing.log" 2>&1
 
 MB_MIGRATOR_DESTINATION_PASSWORD=gateway-secret PATH="$FAKE_BIN:$PATH" \
   "$ROOT_DIR/bin/mb-migrator" push-site \
@@ -116,7 +116,13 @@ MB_MIGRATOR_DESTINATION_PASSWORD=gateway-secret PATH="$FAKE_BIN:$PATH" \
   --mu-plugins=skip \
   --root-extras=skip \
   --cleanup=no \
-  --yes
+  --yes >"$TEST_ROOT/password-push.log" 2>&1
+
+if grep -R -l -e 'gateway-secret' -e 'push-secret' \
+  "$STATE_DIR" "$TEST_ROOT/password-pairing.log" "$TEST_ROOT/password-push.log" >/dev/null 2>&1; then
+  printf 'push state or diagnostics leaked a seeded password\n' >&2
+  exit 1
+fi
 
 test -s "$PUSH_SCP_MARKER"
 test -s "$PUSH_RSYNC_MARKER"

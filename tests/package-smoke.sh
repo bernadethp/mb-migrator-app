@@ -122,6 +122,10 @@ test ! -e "$TARGET/restore-portable-site"
 [[ "$(file_mode "$PRIVATE_STAGE/migration-report.txt")" == "600" ]]
 grep -q 'Source URL read from package manifest: https://source.example.test' "$PRIVATE_STAGE/migration-report.txt"
 grep -q 'URL rewrite pending' "$PRIVATE_STAGE/migration-report.txt"
+if grep -l 'package-secret' "$TEST_ROOT/export.log" "$PRIVATE_STAGE/migration-report.txt" >/dev/null 2>&1; then
+  printf 'package logs or report leaked a seeded database password\n' >&2
+  exit 1
+fi
 COMBINED_SQL="$(find "$PRIVATE_STAGE" -name '*-combined-phpmyadmin-import.sql' -print -quit)"
 test -n "$COMBINED_SQL"
 if grep -Eqi '\bDEFINER[[:space:]]*=' "$COMBINED_SQL"; then

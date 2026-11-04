@@ -64,6 +64,27 @@ if PATH="$TEST_ROOT/bin:$PATH" RELEASE_ARCHIVE_FIXTURE="$archive" RELEASE_CHECKS
   MB_MIGRATOR_VERSION="$VERSION" MB_MIGRATOR_REVISION="$REVISION" bash "$ROOT_DIR/remote-run.sh" --version >/dev/null 2>&1; then
   printf 'Remote runner accepted a missing checksum.\n' >&2; exit 1
 fi
+
+malicious_root="$TEST_ROOT/malicious/mb-migrator-$VERSION"
+mkdir -p "$malicious_root/bin"
+printf 'format=mb-migrator-release-v1\nversion=%s\nrevision=%s\n' "$VERSION" "$REVISION" > "$malicious_root/RELEASE-MANIFEST"
+mkfifo "$malicious_root/bin/mb-migrator"
+malicious_archive="$TEST_ROOT/malicious.tar.gz"
+tar -czf "$malicious_archive" -C "$TEST_ROOT/malicious" "mb-migrator-$VERSION"
+malicious_checksum="$TEST_ROOT/malicious.sha256"
+if command -v sha256sum >/dev/null 2>&1; then
+  malicious_hash="$(sha256sum "$malicious_archive" | awk '{print $1}')"
+else
+  malicious_hash="$(shasum -a 256 "$malicious_archive" | awk '{print $1}')"
+fi
+printf '%s  mb-migrator-%s.tar.gz\n' "$malicious_hash" "$VERSION" > "$malicious_checksum"
+if "$ROOT_DIR/scripts/verify-release.sh" "$malicious_archive" "$malicious_checksum" "$VERSION" "$REVISION" >/dev/null 2>&1; then
+  printf 'Release verifier accepted a correctly checksummed special-file archive.\n' >&2; exit 1
+fi
+if PATH="$TEST_ROOT/bin:$PATH" RELEASE_ARCHIVE_FIXTURE="$malicious_archive" RELEASE_CHECKSUM_FIXTURE="$malicious_checksum" \
+  MB_MIGRATOR_VERSION="$VERSION" MB_MIGRATOR_REVISION="$REVISION" bash "$ROOT_DIR/remote-run.sh" --version >/dev/null 2>&1; then
+  printf 'Remote runner accepted a correctly checksummed special-file archive.\n' >&2; exit 1
+fi
 if MB_MIGRATOR_REF=main bash "$ROOT_DIR/remote-run.sh" --version >/dev/null 2>&1; then
   printf 'Remote runner accepted a mutable development ref.\n' >&2; exit 1
 fi
