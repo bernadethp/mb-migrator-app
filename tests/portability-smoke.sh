@@ -41,7 +41,12 @@ case "$*" in
   *'db query SELECT 1'*) echo 1 ;;
   *'option get home'*|*'option get siteurl'*) echo https://live.example.test ;;
   *'db export '*) printf 'CREATE TABLE old_table (`id` int);\n' > "${@: -1}" ;;
-  *'db import '*) cat "${@: -1}" > "$TEST_DB_IMPORTED" ;;
+  *'db import '*)
+    if [[ -n "${TEST_FAIL_DB_IMPORT_ONCE:-}" && ! -e "$TEST_FAIL_DB_IMPORT_ONCE" ]]; then
+      : > "$TEST_FAIL_DB_IMPORT_ONCE"
+      exit 79
+    fi
+    cat "${@: -1}" > "$TEST_DB_IMPORTED" ;;
   eval\ *|*' eval '*) exit 0 ;;
   *) exit 80 ;;
 esac
@@ -89,7 +94,20 @@ PATH="$T/bin:$PATH" "$ROOT_DIR/bin/mb-migrator" restore "$T/backup.zip" --target
 grep -q 'CREATE TABLE `wp_options`' "$TEST_DB_IMPORTED"
 test -f "$T/db-rollback/database-before.sql"
 test ! -e "$T/target/db-backup-before-import.sql"
+# An interrupted rollback must fail visibly without marking its retained
+# evidence as restored. Repeating the exact guarded rollback then completes.
+if TEST_FAIL_DB_IMPORT_ONCE="$T/rollback-db-failed-once" PATH="$T/bin:$PATH" \
+  "$ROOT_DIR/bin/mb-migrator" rollback --target-root="$T/target" --rollback-dir="$T/db-rollback" --yes \
+  > "$T/interrupted-rollback.log" 2>&1; then
+  echo 'Interrupted rollback unexpectedly completed' >&2; exit 1
+fi
+test -f "$T/rollback-db-failed-once"
+test ! -e "$T/db-rollback/restored"
+test -f "$T/db-rollback/database-before.sql"
+test -f "$T/db-rollback/target-root"
+test -f "$T/db-rollback/added-files"
 PATH="$T/bin:$PATH" "$ROOT_DIR/bin/mb-migrator" rollback --target-root="$T/target" --rollback-dir="$T/db-rollback" --yes
 grep -q 'CREATE TABLE old_table' "$TEST_DB_IMPORTED"
+test -f "$T/db-rollback/restored"
 test -f "$T/target/wp-content/mu-plugins/mb-migrator-safety.php"
 printf 'portability smoke test passed\n'
