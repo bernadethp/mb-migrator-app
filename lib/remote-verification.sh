@@ -36,6 +36,13 @@ wp_site() (
   wp --skip-plugins --skip-themes "$@"
 )
 
+is_platform_plugin_excluded() {
+  case "$1" in
+    nginx-helper|redis-cache|redis-object-cache|redis-cache-pro|gridpane-redis-object-cache|wp-redis|wp-redis-cache|object-cache-pro|*redis*object*cache*) return 0 ;;
+  esac
+  return 1
+}
+
 wp_site core is-installed >/dev/null 2>&1 || fail "WordPress does not bootstrap"
 home="$(wp_site option get home 2>/dev/null)" || fail "WordPress home is unavailable"
 siteurl="$(wp_site option get siteurl 2>/dev/null)" || fail "WordPress siteurl is unavailable"
@@ -80,7 +87,11 @@ media_digest="$({
 admin_count="$(wp_site user list --role=administrator --format=count 2>/dev/null)" || fail "administrator inventory is unavailable"
 [[ "$admin_count" =~ ^[0-9]+$ ]] || fail "administrator count is invalid"
 
-active_plugins="$(wp_site plugin list --status=active --field=name 2>/dev/null | LC_ALL=C sort)" || fail "active plugin inventory is unavailable"
+active_plugins="$(wp_site plugin list --status=active --field=name 2>/dev/null | while IFS= read -r plugin_slug; do
+  if [[ -n "$plugin_slug" ]] && ! is_platform_plugin_excluded "$plugin_slug"; then
+    printf '%s\n' "$plugin_slug"
+  fi
+done | LC_ALL=C sort)" || fail "active plugin inventory is unavailable"
 active_plugins_count="$(printf '%s\n' "$active_plugins" | awk 'NF { count++ } END { print count + 0 }')"
 active_plugins_digest="$(printf '%s' "$active_plugins" | hash_stream)"
 active_theme="$(wp_site theme list --status=active --field=name 2>/dev/null | LC_ALL=C sort)" || fail "active theme inventory is unavailable"

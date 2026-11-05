@@ -25,7 +25,9 @@ case "$*" in
   *'post list '*--format=json*) printf '[{"ID":1,"post_type":"page","post_status":"publish","post_name":"evidence","post_title":"Evidence","post_content":"Marker","post_excerpt":"","post_parent":0,"menu_order":0}]\n' ;;
   *'user list --role=administrator --format=count'*) echo 1 ;;
   *'user list --format=count'*) echo 1 ;;
-  *'plugin list --status=active --field=name'*) echo sample-plugin ;;
+  *'plugin list --status=active --field=name'*)
+    echo sample-plugin
+    [[ "${RELAY_TEST_HOST:-}" != source@test ]] || echo object-cache-pro ;;
   *'theme list --status=active --field=name'*) echo sample-theme ;;
   *'search-replace '*--format=count*) echo 0 ;;
   *'db query SELECT 1'*) echo 1 ;;
@@ -47,6 +49,7 @@ host="$1"; shift
 case "$host" in source@test|dest@test) ;; *) exit 91 ;; esac
 [[ -z "${RELAY_TEST_INSIDE_SSH:-}" ]] || exit 92
 export RELAY_TEST_INSIDE_SSH=1
+export RELAY_TEST_HOST="$host"
 export HOME="$RELAY_TEST_ROOT/home"
 if [[ "${1:-}" == bash && "${2:-}" == -s ]]; then
   # The source collector is real; use the fixture root supplied by the command.
