@@ -18,6 +18,7 @@ cat > "$T/bin/wp" <<'WP'
 #!/usr/bin/env bash
 set -eu
 case "$*" in
+  *'option get home --quiet'*|*'option get siteurl --quiet'*) exit 64 ;;
   *'core is-installed --network'*) exit 1 ;;
   *'core is-installed'*) exit 0 ;;
   *'post list '*--format=count*) [[ "${RELAY_TARGET_MODIFIED:-0}" == 1 ]] && echo 4 || echo 2 ;;
