@@ -68,14 +68,20 @@ cat > "$T/bin/rsync" <<'RSYNC'
 #!/usr/bin/env bash
 set -eu
 args=()
+destination_upload=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e) shift 2; continue ;;
-    source@test:*|dest@test:*) args+=("${1#*:}") ;;
+    source@test:*) args+=("${1#*:}") ;;
+    dest@test:*) destination_upload=1; args+=("${1#*:}") ;;
     *) args+=("$1") ;;
   esac
   shift
 done
+if [[ "$destination_upload" -eq 1 && -n "${RELAY_FAIL_TRANSFER_ONCE:-}" && ! -e "$RELAY_FAIL_TRANSFER_ONCE" ]]; then
+  : > "$RELAY_FAIL_TRANSFER_ONCE"
+  exit 76
+fi
 exec "$RELAY_REAL_RSYNC" "${args[@]}"
 RSYNC
 cat > "$T/bin/curl" <<'CURL'
@@ -146,12 +152,24 @@ run_relay > "$T/second.log"
 test -f "$T/target/wp-content/uploads/new.txt"
 test -L "$T/target/wp-content/uploads/alias.txt"
 grep -q 'Relay migration completed' "$T/second.log"
+# A destination transfer interruption stops before restore, releases the safe
+# pre-restore lock, and can be retried from the retained checksum cache.
+printf interrupted > "$T/source/wp-content/uploads/test.txt"
+if RELAY_FAIL_TRANSFER_ONCE="$T/transfer-failed-once" run_relay > "$T/interrupted-transfer.log" 2>&1; then
+  echo 'Interrupted destination transfer unexpectedly completed' >&2; exit 1
+fi
+test -f "$T/transfer-failed-once"
+[[ "$(cat "$T/target/wp-content/uploads/test.txt")" == other ]]
+test "$(find "$T/state" -name lock -type d | wc -l | tr -d ' ')" == 0
+run_relay > "$T/resumed-transfer.log"
+[[ "$(cat "$T/target/wp-content/uploads/test.txt")" == interrupted ]]
+grep -q 'Relay migration completed' "$T/resumed-transfer.log"
 # A failed fresh database export must not import the previous cached snapshot.
 printf later > "$T/source/wp-content/uploads/test.txt"
 if RELAY_FAIL_DATABASE=1 run_relay > "$T/failed-export.log" 2>&1; then
   echo 'Failed database export unexpectedly imported' >&2; exit 1
 fi
-[[ "$(cat "$T/target/wp-content/uploads/test.txt")" == other ]]
+[[ "$(cat "$T/target/wp-content/uploads/test.txt")" == interrupted ]]
 # No local lock remains after the handled failure.
 test "$(find "$T/state" -name lock -type d | wc -l | tr -d ' ')" == 0
 relay_work="$(find "$T/state" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
