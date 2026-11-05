@@ -69,10 +69,10 @@ if [[ -d "$uploads" ]]; then
 fi
 media_digest="$({
   if [[ -d "$uploads" ]]; then
-    while IFS= read -r -d '' file; do
-      relative="${file#"$uploads"/}"
-      printf '%s\0%s\0' "$relative" "$(hash_file "$file")"
-    done < <(find "$uploads" -type f -print0 | LC_ALL=C sort -z)
+    find "$uploads" -type f -print0 | LC_ALL=C sort -z | while IFS= read -r -d '' file; do
+        relative="${file#"$uploads"/}"
+        printf '%s\0%s\0' "$relative" "$(hash_file "$file")"
+      done
   fi
 } | hash_stream)"
 [[ "$media_count" =~ ^[0-9]+$ && "$media_digest" =~ ^[a-f0-9]{64}$ ]] || fail "media inventory is invalid"
