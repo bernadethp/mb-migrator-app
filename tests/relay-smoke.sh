@@ -83,6 +83,9 @@ CURL
 chmod +x "$T/bin/"*
 export RELAY_REAL_RSYNC="$REAL_RSYNC"
 export PATH="$T/bin:$PATH"
+if grep -Fq '< <(' "$ROOT_DIR/lib/remote-verification.sh"; then
+  echo 'Remote verification must not require /dev/fd process substitution' >&2; exit 1
+fi
 version_output="$("$ROOT_DIR/bin/mb-migrator" --version)"
 [[ "$version_output" == "mb-migrator $(<"$ROOT_DIR/VERSION")" ]]
 doctor_output="$("$ROOT_DIR/bin/mb-migrator" relay-doctor source@test \
