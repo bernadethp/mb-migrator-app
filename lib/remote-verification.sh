@@ -37,8 +37,8 @@ wp_site() (
 )
 
 wp_site core is-installed >/dev/null 2>&1 || fail "WordPress does not bootstrap"
-home="$(wp_site option get home --quiet 2>/dev/null)" || fail "WordPress home is unavailable"
-siteurl="$(wp_site option get siteurl --quiet 2>/dev/null)" || fail "WordPress siteurl is unavailable"
+home="$(wp_site option get home 2>/dev/null)" || fail "WordPress home is unavailable"
+siteurl="$(wp_site option get siteurl 2>/dev/null)" || fail "WordPress siteurl is unavailable"
 [[ "$home" =~ ^https?://[^[:space:]]+$ && "$siteurl" =~ ^https?://[^[:space:]]+$ ]] || fail "WordPress URLs are invalid"
 
 content_json="$(wp_site post list \

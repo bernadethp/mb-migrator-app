@@ -131,7 +131,7 @@ native_dump() (
 get_source_url() (
   local value="" client_bin cnf prefix
   if command -v wp >/dev/null 2>&1; then
-    if value="$(source_wp --skip-plugins --skip-themes option get home --quiet 2>/dev/null)" && [[ -n "$value" ]]; then
+    if value="$(source_wp --skip-plugins --skip-themes option get home 2>/dev/null)" && [[ -n "$value" ]]; then
       printf '%s\n' "$value"
       return 0
     fi
